@@ -3,7 +3,7 @@
 # oj-prepareで指定した問題やコンテストに対し、
 # テンプレートをVSCodeで開き、ブラウザで問題ページを開く
 
-set templete_code_ext '.cpp' # 開くファイルのパス
+set templete_code_ext '.cpp' # 開くファイルの拡張子
 set interval 60 # インターバル
 
 set download_history ~/.cache/online-judge-tools/download-history.jsonl # ojの履歴ファイルのパス
