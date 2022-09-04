@@ -2,6 +2,20 @@
 
 ## Getting Started
 
+git からパッケージをインストールしてください。
+
+```shell
+pip3 install git+https://github.com/hotarunx/oj-jordan.git
+```
+
+### WSL
+
+Web ページを Windows のブラウザで開くため、次のパッケージをインストールしてください。
+
+```shell
+sudo apt install wslu xdg-utils
+```
+
 ## for Developer
 
 パッケージを editable モードでインストール。
