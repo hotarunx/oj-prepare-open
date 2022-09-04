@@ -64,8 +64,22 @@ def parse_oj_download_history():
     ojの履歴ファイルをパースする
     ~/.cache/online-judge-tools/download-history.jsonl
     """
-    dhpath = pathlib.Path(utils.user_cache_dir / "download-history.jsonl")
-    logger.info("履歴ファイル{}を読み込みます".format(dhpath))
+    path = pathlib.Path(utils.user_cache_dir / "download-history.jsonl")
+    logger.info("履歴ファイル{}を読み込みます".format(path))
+
+    with open(path, "r") as fh:
+        for line in fh:
+            try:
+                data = json.loads(line)
+            except json.decoder.JSONDecodeError:
+                logger.warning("壊れてる行があります→{}".format(line))
+                continue
+            print(data["directory"])
+
+
+# メモ directory内のcppファイルをcodeする
+# urlをopenする
+# {"timestamp": 1662298008, "directory": "/home/hotaru/oj-jordan/atcoder.jp/abc263/abc263_e", "url": "https://atcoder.jp/contests/abc263/tasks/abc263_e"}
 
 
 def main():
