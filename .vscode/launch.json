@@ -9,7 +9,14 @@
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/onlinejudge_jordan/main.py",
-      "args": ["https://atcoder.jp/contests/abc263", "-n", "3"],
+      "args": [
+        "https://atcoder.jp/contests/abc263",
+        "-n",
+        "3",
+        "--blank-file",
+        "test/in",
+        "test/testin"
+      ],
       "console": "integratedTerminal",
       "justMyCode": true
     }

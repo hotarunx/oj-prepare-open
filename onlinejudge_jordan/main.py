@@ -3,15 +3,17 @@ import json
 import pathlib
 import subprocess
 import sys
+from decimal import setcontext
 from logging import DEBUG, basicConfig, getLogger
 from time import sleep
 from typing import List, Tuple
 
 import appdirs
 import colorlog
-import onlinejudge_command.utils as utils
-import toml
 
+import onlinejudge_jordan.parse_download_history as parse_download_history
+
+# APIリクエストの間隔の定数
 SHORT_DELAY = 0.1
 N_LONG_DELAY = 10
 LONG_DELAY = (1 - SHORT_DELAY) * N_LONG_DELAY
@@ -32,59 +34,104 @@ def get_parser() -> argparse.ArgumentParser:
     """
     引数のパーサー定義
     """
-    parser = argparse.ArgumentParser()
+    description = "oj-prepareのラッパーです"
+
+    default_config_path = (
+        pathlib.Path(appdirs.user_config_dir("online-judge-tools"))
+        / "prepare.config.toml"
+    )
+
+    parser = argparse.ArgumentParser(description=description)
 
     help_url = "コンテスト OR 問題のURL"
-    help_n = "VSCodeとブラウザで開く最大問題数 デフォルト=10"
+    help_n = "ブラウザとVSCodeで開く問題の数の最大値 デフォルト=10"
+    help_submit = 'VSCodeで開く提出用ファイルのパス デフォルト=["main.cpp", "main.py"]'
+    help_blank_file = "指定した空ファイルを作る"
+
     parser.add_argument("url", type=str, help=help_url)
     parser.add_argument("-n", "--number", type=int, default=10, help=help_n)
-    # parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "-s",
+        "--submit",
+        type=str,
+        nargs="*",
+        default=["main.cpp", "main.py"],
+        help=help_submit,
+    )
+    parser.add_argument(
+        "--blank-file", type=str, nargs="*", default=[], help=help_blank_file
+    )
+    parser.add_argument(
+        "--config-file",
+        type=pathlib.Path,
+        help=f"""default: {str(default_config_path)}""",
+    )
 
     return parser
 
 
-def parse_arg() -> Tuple[str, int]:
+def parse_arg() -> Tuple[str, int, List[str], List[str], str]:
     """
     パーサーを動かす
     """
     parser = get_parser()
     parsed = parser.parse_args()
-    return (parsed.url, parsed.number)
+    return (
+        parsed.url,
+        parsed.number,
+        parsed.submit,
+        parsed.blank_file,
+        parsed.config_file,
+    )
 
 
-def open_problems(problem_urls: List[str]):
+def open_problems(
+    problem_urls: List[str],
+    submit_files: List[str],
+    blank_files: List[str],
+    is_open_browser: bool = True,
+    is_open_vscode: bool = True,
+):
     """
-    問題をVSCodeとブラウザで開く
+    問題をブラウザとVSCodeで開く
+    指定した空ファイルを作成する
     """
-    pass
+    history = parse_download_history.parse_oj_download_history()
 
+    for i, url in enumerate(problem_urls):
+        logger.info("#{} {} をブラウザとVSCodeで開いて空ファイル作成します".format(i + 1, url))
+        if url not in history:
+            logger.warning(
+                "download_history.jsonl に {} のデータが見つかりません スキップします".format(url)
+            )
+            continue
 
-def parse_oj_download_history():
-    """
-    ojの履歴ファイルをパースする
-    ~/.cache/online-judge-tools/download-history.jsonl
-    """
-    path = pathlib.Path(utils.user_cache_dir / "download-history.jsonl")
-    logger.info("履歴ファイル{}を読み込みます".format(path))
+        data = history[url]
+        path = pathlib.Path(data["directory"])
 
-    with open(path, "r") as fh:
-        for line in fh:
-            try:
-                data = json.loads(line)
-            except json.decoder.JSONDecodeError:
-                logger.warning("壊れてる行があります→{}".format(line))
-                continue
-            print(data["directory"])
+        if is_open_browser:
+            res = subprocess.run(["open", url])
+            if res.returncode != 0:
+                logger.warning("urlをopenできませんでした")
 
+        if is_open_vscode:
+            for si in submit_files:
+                for gi in path.glob(si):
+                    subprocess.run(["code", gi])
 
-# メモ directory内のcppファイルをcodeする
-# urlをopenする
-# {"timestamp": 1662298008, "directory": "/home/hotaru/oj-jordan/atcoder.jp/abc263/abc263_e", "url": "https://atcoder.jp/contests/abc263/tasks/abc263_e"}
+        for bi in blank_files:
+            bipath = pathlib.Path(path / bi)
+            bipath.touch(exist_ok=True)
+
+        # APIリクエストの間隔を取る
+        sleep(SHORT_DELAY)
+        if (i + 1) % N_LONG_DELAY == 0:
+            sleep(LONG_DELAY)
 
 
 def main():
     # 引数をパース
-    arg_url, arg_n = parse_arg()
+    arg_url, n_open, submit_files, blankfiles_make, path_config_file = parse_arg()
 
     # oj-apiからコンテスト情報のJSONを取得
     contest_raw = subprocess.run(
@@ -105,25 +152,42 @@ def main():
     if problem_urls.count(arg_url) > 0:
         problem_urls = [arg_url]
 
-    logger.info("次のURLを処理します")
+    logger.info("処理対象のコンテスト OR 問題のURLです")
     logger.info(problem_urls)
 
     # 各問題を走査
-    # 問題URLをoj-prepareする
-    # 最大問題数に達したら
+    has_opened_file = False
     for i, url in enumerate(problem_urls):
-        logger.info("#{} {}を処理します".format(i + 1, url))
-        res = subprocess.run(["oj-prepare", url])
+        # 問題URLをoj-prepareする
+        logger.info("#{} {} を処理します".format(i + 1, url))
+        # 設定ファイルがあるならoj-prepareにわたす
+        set_config = (
+            ["--config-file", path_config_file] if path_config_file is not None else []
+        )
+        res = subprocess.run(["oj-prepare", url] + set_config)
         if res.returncode != 0:
-            logger.error("oj-prepareに失敗しました")
-            sys.exit(1)
+            logger.warning("{} のoj-prepareに失敗しました".format(url))
 
-        if (i + 1) % arg_n == 0 or (i + 1) == len(problem_urls):
-            open_problems(problem_urls[:arg_n])
+        # 最大問題数に達する、または全問題を走査したら
+        # 問題をブラウザとVSCodeで開く
+        if not has_opened_file and ((i + 1) == n_open or (i + 1) == len(problem_urls)):
+            open_problems(problem_urls[: i + 1], submit_files, blankfiles_make)
+            has_opened_file = True
 
+        # APIリクエストの間隔を取る
         sleep(SHORT_DELAY)
         if (i + 1) % N_LONG_DELAY == 0:
             sleep(LONG_DELAY)
+
+    # 空ファイル作成 ↓の順番にしたい
+    # 最大問題数の空ファイル作成→残りの問題のoj-prepare→残りの問題の空ファイル作成
+    open_problems(
+        problem_urls[n_open + 1 :],
+        submit_files,
+        blankfiles_make,
+        is_open_browser=False,
+        is_open_vscode=False,
+    )
 
 
 if __name__ == "__main__":
