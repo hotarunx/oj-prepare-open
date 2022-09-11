@@ -7,7 +7,8 @@ oj-prepare のラッパーツール。
 * `oj-prepare` のラッパー
 * `oj-prepare` で指定した問題のページを開く
 * `oj-prepare` が生成したテンプレートファイル（提出用ファイル）を VSCode で開く
-* `oj-prepare` が生成したディレクトリに空ファイルを作成  標準入力用ファイルを生成することを想定
+* `oj-prepare` が生成したディレクトリに空ファイルを作成
+  * 標準入力用ファイルを生成することを想定
 * `oj-prepare` が生成したファイル/ディレクトリのパスを渡すとその問題のページを開く
 
 ## How to install
@@ -16,6 +17,13 @@ git からパッケージをインストールしてください。
 
 ```shell
 pip3 install git+https://github.com/hotarunx/oj-jordan.git
+```
+
+`.config/online-judge-tools/prepare.config.toml` の contest_directory problem_directory の値を下記に変更してください。
+
+```toml
+contest_directory = ""
+problem_directory = "./{service_domain}/{contest_id}/{problem_id}"
 ```
 
 ## How to use
