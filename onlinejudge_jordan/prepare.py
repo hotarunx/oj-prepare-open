@@ -1,6 +1,7 @@
 import argparse
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 from logging import getLogger
@@ -27,7 +28,7 @@ def add_subparser(subparsers: argparse.Action) -> None:
     subparser = subparsers_add_parser(
         "prepare",
         aliases=["p", "pp"],
-        help="oj-prepare を実行する 追加で問題のページをブラウザで開きテンプレートファイルをVSCodeで開く",
+        help="oj-prepare を実行する 追加で問題のページをブラウザで開く 提出ファイルをVSCodeで開く",
     )
 
     default_config_path = (
@@ -37,21 +38,21 @@ def add_subparser(subparsers: argparse.Action) -> None:
 
     help_url = "コンテスト OR 問題のURL"
     help_n = "ブラウザとVSCodeで開く問題の数の最大値 デフォルト=10"
-    help_submit = 'VSCodeで開くテンプレートファイルのパス デフォルト=["main.cpp", "main.py"]'
-    help_blank_file = "指定した空ファイルを作る"
+    help_coding = '提出ファイルのパス デフォルト=["main.cpp", "main.py"]'
+    help_stdin = "標準入力リダイレクトファイルのパス"
 
     subparser.add_argument("url", type=str, help=help_url)
     subparser.add_argument("-n", "--number", type=int, default=10, help=help_n)
     subparser.add_argument(
-        "-s",
-        "--submit",
+        "-c",
+        "--coding_file",
         type=str,
         nargs="*",
         default=["main.cpp", "main.py"],
-        help=help_submit,
+        help=help_coding,
     )
     subparser.add_argument(
-        "--blank-file", type=str, nargs="*", default=[], help=help_blank_file
+        "-s", "--stdin-file", type=str, nargs="*", default=[], help=help_stdin
     )
     subparser.add_argument(
         "--config-file",
@@ -64,19 +65,25 @@ def add_subparser(subparsers: argparse.Action) -> None:
 
 def open_problems(
     problem_urls: List[str],
-    submit_files: List[str],
-    blank_files: List[str],
+    coding_files: List[str],
+    stdin_files: List[str],
     is_open_browser: bool = True,
     is_open_vscode: bool = True,
 ):
     """
-    問題をブラウザとVSCodeで開く
-    指定した空ファイルを作成する
+    問題をブラウザで開く
+    提出ファイルをVSCodeで開く
+    標準入力リダイレクトファイルを作成する
     """
     history = parse_download_history.parse_oj_download_history()
 
     for i, url in enumerate(problem_urls):
-        logger.info("#{} {} をブラウザとVSCodeで開いて空ファイル作成します".format(i + 1, url))
+        logger.info("#{} {} を処理します".format(i + 1, url))
+        logger.info(
+            "問題をブラウザで開く {} "
+            "提出ファイルをVSCodeで開く {} "
+            "標準入力リダイレクトファイルを作成する {}".format(is_open_browser, is_open_vscode, True)
+        )
         if url not in history:
             logger.warning(
                 "download_history.jsonl に {} のデータが見つかりません スキップします".format(url)
@@ -92,13 +99,19 @@ def open_problems(
                 logger.warning("urlをopenできませんでした")
 
         if is_open_vscode:
-            for si in submit_files:
-                for gi in path.glob(si):
-                    subprocess.run(["code", gi])
+            for file in coding_files:
+                for generated_file in path.glob(file):
+                    subprocess.run(["code", generated_file])
 
-        for bi in blank_files:
-            bipath = pathlib.Path(path / bi)
-            bipath.touch(exist_ok=True)
+        for file in stdin_files:
+            tofile = pathlib.Path(path / file)
+            # testファイル内の拡張子.inで辞書順最小のファイルがコピー元
+            # 辞書順最小のファイルが最初のテストケースのことがおおいため
+            fromfile_path = pathlib.Path(path / "test")
+            fromfiles = list(sorted(fromfile_path.glob("*.in")))
+            for fromfile in fromfiles:
+                shutil.copy(fromfile, tofile)
+                break
 
         # APIリクエストの間隔を取る
         sleep(SHORT_DELAY)
@@ -111,8 +124,8 @@ def run(args: argparse.Namespace) -> bool:
     arg_url: str = args.url
     n_open: int = args.number
     path_config_file: str = args.config_file
-    submit_files: List[str] = args.submit
-    blankfiles_make: List[str] = args.blank_file
+    coding_files: List[str] = args.coding_file
+    stdin_files: List[str] = args.stdin_file
 
     # oj-apiからコンテスト情報のJSONを取得
     contest_raw = subprocess.run(
@@ -152,7 +165,7 @@ def run(args: argparse.Namespace) -> bool:
         # 最大問題数に達する、または全問題を走査したら
         # 問題をブラウザとVSCodeで開く
         if not has_opened_file and ((i + 1) == n_open or (i + 1) == len(problem_urls)):
-            open_problems(problem_urls[: i + 1], submit_files, blankfiles_make)
+            open_problems(problem_urls[: i + 1], coding_files, stdin_files)
             has_opened_file = True
 
         # APIリクエストの間隔を取る
@@ -164,8 +177,8 @@ def run(args: argparse.Namespace) -> bool:
     # 最大問題数の空ファイル作成→残りの問題のoj-prepare→残りの問題の空ファイル作成
     open_problems(
         problem_urls[n_open + 1 :],
-        submit_files,
-        blankfiles_make,
+        coding_files,
+        stdin_files,
         is_open_browser=False,
         is_open_vscode=False,
     )
