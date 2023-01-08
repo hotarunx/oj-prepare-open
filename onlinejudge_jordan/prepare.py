@@ -165,7 +165,15 @@ def run(args: argparse.Namespace) -> bool:
         # 最大問題数に達する、または全問題を走査したら
         # 問題をブラウザとVSCodeで開く
         if not has_opened_file and ((i + 1) == n_open or (i + 1) == len(problem_urls)):
-            open_problems(problem_urls[: i + 1], coding_files, stdin_files)
+            # 問題が1つのときは、問題をブラウザで開かない
+            # URLをコピーするため、すでに問題を開いている想定のため
+            is_open_browser = True if len(problem_urls) > 1 else False
+            open_problems(
+                problem_urls[: i + 1],
+                coding_files,
+                stdin_files,
+                is_open_browser,
+            )
             has_opened_file = True
 
         # APIリクエストの間隔を取る
